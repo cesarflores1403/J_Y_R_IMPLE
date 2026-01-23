@@ -1,0 +1,10 @@
+{
+  "name": "j_y_r_imple",
+  "version": "1.0.0",
+  "description": "Full-stack project with Node.js/Express and React",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ]
+}
