@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Inventario</title><link rel="stylesheet" href="../css/styles.css"></head>
+<body>
+<div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
+<main class="main-content"><header class="top-header" id="appHeader"></header>
+<div class="page-content fade-in">
+    <div class="page-header"><div><h1>Movimientos de Inventario</h1><p class="subtitle">Historial de entradas, salidas y ajustes</p></div>
+    <button class="btn btn-primary" id="btnAdjust">⚙️ Ajuste Manual</button></div>
+    <div class="toolbar">
+        <select class="filter-select" id="filterType"><option value="">Todos los tipos</option><option value="ENTRADA">Entrada</option><option value="SALIDA">Salida</option><option value="AJUSTE">Ajuste</option><option value="DEVOLUCION">Devolución</option></select>
+        <div class="search-box"><span class="icon">🔍</span><input type="text" placeholder="ID de producto..." id="prodIdInput"></div>
+        <button class="btn btn-secondary btn-sm" id="btnSearch">Buscar</button>
+    </div>
+    <div class="card"><div class="table-container"><table><thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Stock Anterior</th><th>Stock Nuevo</th><th>Referencia</th><th>Usuario</th></tr></thead>
+    <tbody id="tableBody"><tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:2rem">Seleccione filtros para ver movimientos</td></tr></tbody></table></div></div>
+</div></main></div>
+
+<div class="modal-overlay" id="adjModal"><div class="modal" style="max-width:460px"><div class="modal-header"><h2>Ajuste de Inventario</h2><button class="modal-close" onclick="document.getElementById('adjModal').classList.remove('active')">×</button></div>
+<div class="modal-body"><form id="adjForm">
+<div class="form-group"><label class="form-label">Producto (ID) *</label><input type="number" class="form-control" id="adjProd" required></div>
+<div class="form-group"><label class="form-label">Nuevo Stock *</label><input type="number" class="form-control" id="adjStock" required min="0"></div>
+<div class="form-group"><label class="form-label">Motivo *</label><textarea class="form-control" id="adjReason" required rows="2"></textarea></div></form></div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('adjModal').classList.remove('active')">Cancelar</button><button class="btn btn-primary" id="btnSaveAdj">Aplicar Ajuste</button></div></div></div>
+
+<script type="module">
+    import { initShell } from '../js/modules/shell.js'; import api from '../js/utils/api.js'; import toast from '../js/utils/toast.js'; import modal from '../js/utils/modal.js';
+    import { formatDateTime } from '../js/utils/helpers.js';
+    initShell('inventory');
+
+    const typeColors={ENTRADA:'var(--success)',SALIDA:'var(--danger)',AJUSTE:'var(--warning)',DEVOLUCION:'var(--info)'};
+    const typeBadge=t=>`<span class="badge badge-${t==='ENTRADA'?'success':t==='SALIDA'?'danger':t==='AJUSTE'?'warning':'info'}">${t}</span>`;
+
+    async function load(type='',productId=''){const tb=document.getElementById('tableBody');
+        if(!type&&!productId){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:2rem">Seleccione un tipo o producto</td></tr>';return;}
+        tb.innerHTML='<tr><td colspan="8"><div class="spinner"></div></td></tr>';
+        try{let ep=productId?`/inventory/movements/product/${productId}?size=50&sort=id,desc`:`/inventory/movements/type/${type}?size=50&sort=id,desc`;
+        const r=await api.get(ep);if(!r?.success)return;const data=r.data.content||r.data||[];
+        if(!data.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state"><h3>Sin movimientos</h3></div></td></tr>';return;}
+        tb.innerHTML=data.map(m=>`<tr><td style="font-size:0.78rem">${formatDateTime(m.movementDate)}</td><td>${m.productName}<br><small class="mono" style="color:var(--text-muted)">${m.productCode}</small></td>
+        <td>${typeBadge(m.movementType)}</td><td style="font-weight:600">${m.quantity}</td><td>${m.previousStock}</td><td style="font-weight:600">${m.newStock}</td>
+        <td style="font-size:0.78rem">${m.referenceType||'-'}${m.referenceId?' #'+m.referenceId:''}</td><td>${m.userName}</td></tr>`).join('');}catch(e){}}
+
+    document.getElementById('filterType').addEventListener('change',e=>load(e.target.value,''));
+    document.getElementById('btnSearch').addEventListener('click',()=>{const pid=document.getElementById('prodIdInput').value;if(pid)load('',pid);});
+
+    document.getElementById('btnAdjust').addEventListener('click',()=>{document.getElementById('adjForm').reset();modal.open('adjModal');});
+    document.getElementById('btnSaveAdj').addEventListener('click',async()=>{const f=document.getElementById('adjForm');if(!f.checkValidity()){f.reportValidity();return;}
+        try{const r=await api.post('/inventory/adjust',{productId:parseInt(document.getElementById('adjProd').value),newStock:parseInt(document.getElementById('adjStock').value),reason:document.getElementById('adjReason').value.trim()});
+        if(r?.success){toast.success('Ajuste aplicado');modal.close('adjModal');load('AJUSTE','');}else toast.error(r?.message);}catch(e){toast.error(e.message);}});
+</script>
+</body></html>

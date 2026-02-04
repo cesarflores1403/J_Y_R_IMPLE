@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JYR System - Productos</title>
+    <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+    <div class="app-layout">
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        <aside class="sidebar" id="appSidebar"></aside>
+        <main class="main-content">
+            <header class="top-header" id="appHeader"></header>
+            <div class="page-content fade-in">
+                <div class="page-header">
+                    <div><h1>Productos</h1><p class="subtitle">Gestión del catálogo de productos</p></div>
+                    <button class="btn btn-primary" id="btnNew">+ Nuevo Producto</button>
+                </div>
+
+                <div class="toolbar">
+                    <div class="search-box">
+                        <span class="icon">🔍</span>
+                        <input type="text" placeholder="Buscar por nombre, código o barra..." id="searchInput">
+                    </div>
+                    <select class="filter-select" id="filterCategory">
+                        <option value="">Todas las categorías</option>
+                    </select>
+                    <button class="btn btn-secondary btn-sm" id="btnLowStock">⚠ Stock Bajo</button>
+                </div>
+
+                <div class="card">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th></th><th>Código</th><th>Producto</th><th>Categoría</th>
+                                    <th>P. Compra</th><th>P. Venta</th><th>Stock</th><th>Estado</th><th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                                <tr><td colspan="9"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Product Modal -->
+    <div class="modal-overlay" id="productModal">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h2 id="modalTitle">Nuevo Producto</h2>
+                <button class="modal-close" onclick="document.getElementById('productModal').classList.remove('active')" >×</button>
+            </div>
+            <div class="modal-body">
+                <form id="productForm">
+                    <input type="hidden" id="pId">
+                    <div class="form-row">
+                        <div class="form-group"><label class="form-label">Código *</label><input class="form-control" id="pCode" required></div>
+                        <div class="form-group"><label class="form-label">Código de Barras</label><input class="form-control" id="pBarcode"></div>
+                    </div>
+                    <div class="form-group"><label class="form-label">Nombre *</label><input class="form-control" id="pName" required></div>
+                    <div class="form-row">
+                        <div class="form-group"><label class="form-label">Categoría *</label><select class="form-control" id="pCategory" required></select></div>
+                        <div class="form-group"><label class="form-label">Marca</label><input class="form-control" id="pBrand"></div>
+                        <div class="form-group"><label class="form-label">Modelo</label><input class="form-control" id="pModel"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label class="form-label">Precio Compra *</label><input type="number" step="0.01" class="form-control" id="pPurchasePrice" required></div>
+                        <div class="form-group"><label class="form-label">Precio Venta *</label><input type="number" step="0.01" class="form-control" id="pSalePrice" required></div>
+                        <div class="form-group"><label class="form-label">ISV %</label><input type="number" step="0.01" class="form-control" id="pTax" value="15"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label class="form-label">Stock</label><input type="number" class="form-control" id="pStock" value="0"></div>
+                        <div class="form-group"><label class="form-label">Stock Mínimo</label><input type="number" class="form-control" id="pMinStock" value="5"></div>
+                        <div class="form-group"><label class="form-label">Unidad</label><input class="form-control" id="pUnit" value="UNIDAD"></div>
+                    </div>
+                    <div class="form-group"><label class="form-label">Descripción</label><textarea class="form-control" id="pDesc" rows="2"></textarea></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="document.getElementById('productModal').classList.remove('active')">Cancelar</button>
+                <button class="btn btn-primary" id="btnSave">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initShell } from '../js/modules/shell.js';
+        import api from '../js/utils/api.js';
+        import toast from '../js/utils/toast.js';
+        import modal from '../js/utils/modal.js';
+        import { formatCurrency, debounce, hasRole } from '../js/utils/helpers.js';
+
+        initShell('products');
+
+        const tbody = document.getElementById('tableBody');
+        const canEdit = hasRole('ADMIN', 'BODEGUERO');
+
+        if (!canEdit) document.getElementById('btnNew').style.display = 'none';
+
+        // Load categories
+        async function loadCategories() {
+            try {
+                const res = await api.get('/categories');
+                if (!res?.success) return;
+                const opts = res.data.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+                document.getElementById('pCategory').innerHTML = '<option value="">Seleccione...</option>' + opts;
+                document.getElementById('filterCategory').innerHTML = '<option value="">Todas las categorías</option>' + opts;
+            } catch(e) {}
+        }
+
+        // Load products
+        async function loadProducts(search = '', categoryId = '') {
+            tbody.innerHTML = '<tr><td colspan="9"><div class="spinner"></div></td></tr>';
+            try {
+                let endpoint = '/products';
+                if (categoryId) endpoint = `/products/category/${categoryId}`;
+                const res = await api.get(endpoint);
+                if (!res?.success) return;
+
+                let data = res.data;
+                if (search) {
+                    const q = search.toLowerCase();
+                    data = data.filter(p =>
+                        p.name.toLowerCase().includes(q) ||
+                        p.code.toLowerCase().includes(q) ||
+                        (p.barcode && p.barcode.toLowerCase().includes(q))
+                    );
+                }
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="icon">📦</div><h3>Sin productos</h3><p>No se encontraron productos</p></div></td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.map(p => `
+                    <tr>
+                        <td><div class="product-thumb">${p.imageUrl ? `<img src="http://localhost:8080${p.imageUrl}">` : '📷'}</div></td>
+                        <td><span class="mono" style="font-size:0.8rem">${p.code}</span></td>
+                        <td><strong>${p.name}</strong>${p.brand ? `<br><small style="color:var(--text-muted)">${p.brand}</small>` : ''}</td>
+                        <td>${p.categoryName}</td>
+                        <td class="mono">${formatCurrency(p.purchasePrice)}</td>
+                        <td class="mono" style="color:var(--accent)">${formatCurrency(p.salePrice)}</td>
+                        <td style="font-weight:600; ${p.lowStock ? 'color:var(--danger)' : ''}">${p.stock}</td>
+                        <td>${p.lowStock ? '<span class="badge badge-danger">Bajo</span>' : '<span class="badge badge-success">OK</span>'}</td>
+                        <td>
+                            <div class="btn-group">
+                                ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="editProduct(${p.id})">✏️</button>
+                                <button class="btn btn-ghost btn-sm" onclick="deleteProduct(${p.id},'${p.name}')">🗑️</button>` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="9" style="color:var(--danger);text-align:center">Error: ${err.message}</td></tr>`;
+            }
+        }
+
+        // Search
+        document.getElementById('searchInput').addEventListener('input', debounce((e) => {
+            loadProducts(e.target.value, document.getElementById('filterCategory').value);
+        }));
+
+        document.getElementById('filterCategory').addEventListener('change', (e) => {
+            loadProducts(document.getElementById('searchInput').value, e.target.value);
+        });
+
+        document.getElementById('btnLowStock').addEventListener('click', async () => {
+            tbody.innerHTML = '<tr><td colspan="9"><div class="spinner"></div></td></tr>';
+            try {
+                const res = await api.get('/products/low-stock');
+                if (res?.success && res.data?.length) {
+                    tbody.innerHTML = res.data.map(p => `
+                        <tr>
+                            
+                            <td class="mono">${p.code}</td>
+                            <td><strong>${p.name}</strong></td>
+                            <td>${p.categoryName}</td>
+                            <td class="mono">${formatCurrency(p.purchasePrice)}</td>
+                            <td class="mono">${formatCurrency(p.salePrice)}</td>
+                            <td style="font-weight:600;color:var(--danger)">${p.stock}</td>
+                            <td><span class="badge badge-danger">Bajo</span></td>
+                            <td></td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:2rem">✓ Sin productos con stock bajo</td></tr>';
+                }
+            } catch(e) {}
+        });
+
+        // New product
+        document.getElementById('btnNew').addEventListener('click', () => {
+            document.getElementById('modalTitle').textContent = 'Nuevo Producto';
+            document.getElementById('productForm').reset();
+            document.getElementById('pId').value = '';
+            document.getElementById('pTax').value = '15';
+            document.getElementById('pMinStock').value = '5';
+            document.getElementById('pUnit').value = 'UNIDAD';
+            modal.open('productModal');
+        });
+
+        // Save
+        document.getElementById('btnSave').addEventListener('click', async () => {
+            const form = document.getElementById('productForm');
+            if (!form.checkValidity()) { form.reportValidity(); return; }
+
+            const id = document.getElementById('pId').value;
+            const body = {
+                code: document.getElementById('pCode').value.trim(),
+                barcode: document.getElementById('pBarcode').value.trim() || null,
+                name: document.getElementById('pName').value.trim(),
+                categoryId: parseInt(document.getElementById('pCategory').value),
+                purchasePrice: parseFloat(document.getElementById('pPurchasePrice').value),
+                salePrice: parseFloat(document.getElementById('pSalePrice').value),
+                taxRate: parseFloat(document.getElementById('pTax').value) || 15,
+                stock: parseInt(document.getElementById('pStock').value) || 0,
+                minStock: parseInt(document.getElementById('pMinStock').value) || 5,
+                unit: document.getElementById('pUnit').value || 'UNIDAD',
+                brand: document.getElementById('pBrand').value.trim() || null,
+                model: document.getElementById('pModel').value.trim() || null,
+                description: document.getElementById('pDesc').value.trim() || null
+            };
+
+            try {
+                const res = id
+                    ? await api.put(`/products/${id}`, body)
+                    : await api.post('/products', body);
+                if (res?.success) {
+                    toast.success(id ? 'Producto actualizado' : 'Producto creado');
+                    modal.close('productModal');
+                    loadProducts();
+                } else {
+                    toast.error(res?.message || 'Error al guardar');
+                }
+            } catch (err) {
+                toast.error(err.message);
+            }
+        });
+
+        // Edit
+        window.editProduct = async (id) => {
+            try {
+                const res = await api.get(`/products/${id}`);
+                if (!res?.success) return;
+                const p = res.data;
+                document.getElementById('modalTitle').textContent = 'Editar Producto';
+                document.getElementById('pId').value = p.id;
+                document.getElementById('pCode').value = p.code;
+                document.getElementById('pBarcode').value = p.barcode || '';
+                document.getElementById('pName').value = p.name;
+                document.getElementById('pCategory').value = p.categoryId;
+                document.getElementById('pBrand').value = p.brand || '';
+                document.getElementById('pModel').value = p.model || '';
+                document.getElementById('pPurchasePrice').value = p.purchasePrice;
+                document.getElementById('pSalePrice').value = p.salePrice;
+                document.getElementById('pTax').value = p.taxRate;
+                document.getElementById('pStock').value = p.stock;
+                document.getElementById('pMinStock').value = p.minStock;
+                document.getElementById('pUnit').value = p.unit || 'UNIDAD';
+                document.getElementById('pDesc').value = p.description || '';
+                modal.open('productModal');
+            } catch(e) { toast.error(e.message); }
+        };
+
+        // Delete
+        window.deleteProduct = async (id, name) => {
+            const ok = await modal.confirm(`¿Eliminar el producto "${name}"?`, 'Eliminar Producto');
+            if (!ok) return;
+            try {
+                const res = await api.delete(`/products/${id}`);
+                if (res?.success) { toast.success('Producto eliminado'); loadProducts(); }
+            } catch(e) { toast.error(e.message); }
+        };
+
+        loadCategories();
+        loadProducts();
+    </script>
+</body>
+</html>

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JYR System - Facturas</title>
+    <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+    <div class="app-layout">
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        <aside class="sidebar" id="appSidebar"></aside>
+        <main class="main-content">
+            <header class="top-header" id="appHeader"></header>
+            <div class="page-content fade-in">
+                <div class="page-header">
+                    <div><h1>Facturas</h1><p class="subtitle">Emisión y gestión de facturas</p></div>
+                    <button class="btn btn-primary" id="btnNewInvoice">+ Nueva Factura</button>
+                </div>
+
+                <div class="toolbar">
+                    <div class="search-box">
+                        <span class="icon">🔍</span>
+                        <input type="text" placeholder="Buscar por número o cliente..." id="searchInput">
+                    </div>
+                    <select class="filter-select" id="filterStatus">
+                        <option value="">Todos los estados</option>
+                        <option value="PENDIENTE">Pendiente</option>
+                        <option value="PAGADA">Pagada</option>
+                        <option value="ANULADA">Anulada</option>
+                    </select>
+                </div>
+
+                <div class="card">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Número</th><th>Fecha</th><th>Cliente</th>
+                                    <th>Total</th><th>Pago</th><th>Estado</th><th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                                <tr><td colspan="7"><div class="spinner"></div></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Invoice Creation Modal -->
+    <div class="modal-overlay" id="invoiceModal">
+        <div class="modal modal-xl">
+            <div class="modal-header">
+                <h2>Nueva Factura</h2>
+                <button class="modal-close" onclick="document.getElementById('invoiceModal').classList.remove('active')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Cliente *</label>
+                        <select class="form-control" id="invCustomer" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Método de Pago</label>
+                        <select class="form-control" id="invPayment">
+                            <option value="EFECTIVO">Efectivo</option>
+                            <option value="TARJETA">Tarjeta</option>
+                            <option value="TRANSFERENCIA">Transferencia</option>
+                            <option value="CREDITO">Crédito</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin:1rem 0">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+                        <h4>Detalle de Productos</h4>
+                        <button class="btn btn-secondary btn-sm" id="btnAddLine">+ Agregar Línea</button>
+                    </div>
+                    <div id="invoiceLines"></div>
+                </div>
+
+                <div class="totals-section" id="invoiceTotals">
+                    <div class="totals-row"><span class="label">Subtotal:</span><span class="value" id="totSubtotal">L 0.00</span></div>
+                    <div class="totals-row"><span class="label">ISV:</span><span class="value" id="totTax">L 0.00</span></div>
+                    <div class="totals-row"><span class="label">Descuento:</span><span class="value"><input type="number" step="0.01" value="0" id="totDiscount" class="form-control" style="width:120px;text-align:right;padding:0.3rem 0.5rem"></span></div>
+                    <div class="totals-row total"><span class="label">TOTAL:</span><span class="value" id="totTotal">L 0.00</span></div>
+                </div>
+
+                <div class="form-group" style="margin-top:1rem">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-control" id="invNotes" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="document.getElementById('invoiceModal').classList.remove('active')">Cancelar</button>
+                <button class="btn btn-primary" id="btnSaveInvoice">Emitir Factura</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail View Modal -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h2 id="detailTitle">Factura</h2>
+                <button class="modal-close" onclick="document.getElementById('detailModal').classList.remove('active')">×</button>
+            </div>
+            <div class="modal-body" id="detailBody"></div>
+            <div class="modal-footer" id="detailFooter"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initShell } from '../js/modules/shell.js';
+        import api from '../js/utils/api.js';
+        import toast from '../js/utils/toast.js';
+        import modal from '../js/utils/modal.js';
+        import { formatCurrency, formatDate, statusBadge, debounce } from '../js/utils/helpers.js';
+
+        initShell('invoices');
+
+        let products = [];
+        let lineCount = 0;
+
+        // Load data
+        async function init() {
+            try {
+                const [custRes, prodRes] = await Promise.all([
+                    api.get('/customers'),
+                    api.get('/products')
+                ]);
+                if (custRes?.success) {
+                    document.getElementById('invCustomer').innerHTML =
+                        '<option value="">Seleccione cliente...</option>' +
+                        custRes.data.map(c => `<option value="${c.id}">${c.fullName} - ${c.identityNumber}</option>`).join('');
+                }
+                if (prodRes?.success) products = prodRes.data;
+            } catch(e) {}
+            loadInvoices();
+        }
+
+        async function loadInvoices() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '<tr><td colspan="7"><div class="spinner"></div></td></tr>';
+            try {
+                const status = document.getElementById('filterStatus').value;
+                const endpoint = status
+                    ? `/documents/type/FACTURA/status/${status}?size=50&sort=id,desc`
+                    : '/documents/type/FACTURA?size=50&sort=id,desc';
+                const res = await api.get(endpoint);
+                if (!res?.success) return;
+
+                const data = res.data.content || res.data || [];
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="icon">🧾</div><h3>Sin facturas</h3></div></td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.map(d => `
+                    <tr>
+                        <td><span class="mono" style="color:var(--accent)">${d.documentNumber}</span></td>
+                        <td>${formatDate(d.documentDate)}</td>
+                        <td>${d.customerName}</td>
+                        <td class="mono" style="font-weight:600">${formatCurrency(d.total)}</td>
+                        <td>${d.paymentMethod || '-'}</td>
+                        <td>${statusBadge(d.status)}</td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-ghost btn-sm" onclick="viewInvoice(${d.id})">ver</button>
+                                ${d.status === 'PENDIENTE' ? `
+                                    <button class="btn btn-success btn-sm" onclick="payInvoice(${d.id})">✓ Pagar</button>
+                                    <button class="btn btn-danger btn-sm" onclick="cancelInvoice(${d.id})">✕</button>
+                                ` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch(e) { tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger)">${e.message}</td></tr>`; }
+        }
+
+        document.getElementById('filterStatus').addEventListener('change', loadInvoices);
+
+        // Add line
+        function addLine() {
+            lineCount++;
+            const container = document.getElementById('invoiceLines');
+            const div = document.createElement('div');
+            div.className = 'detail-row';
+            div.id = `line-${lineCount}`;
+            div.innerHTML = `
+                <select class="form-control line-product" data-line="${lineCount}" onchange="onProductChange(this)">
+                    <option value="">Seleccione producto...</option>
+                    ${products.map(p => `<option value="${p.id}" data-price="${p.salePrice}" data-tax="${p.taxRate}" data-stock="${p.stock}">${p.code} - ${p.name} (Stock: ${p.stock})</option>`).join('')}
+                </select>
+                <input type="number" min="1" value="1" class="form-control line-qty" data-line="${lineCount}" onchange="recalc()">
+                <input type="number" step="0.01" class="form-control line-price" data-line="${lineCount}" onchange="recalc()" placeholder="Precio">
+                <input type="number" step="0.01" value="0" class="form-control line-disc" data-line="${lineCount}" onchange="recalc()" placeholder="Desc %">
+                <span class="mono line-total" data-line="${lineCount}" style="text-align:right;font-weight:600;font-size:0.82rem">L 0.00</span>
+                <button class="btn btn-ghost btn-icon btn-sm" onclick="removeLine(${lineCount})">✕</button>
+            `;
+            container.appendChild(div);
+        }
+
+        window.onProductChange = function(select) {
+            const opt = select.selectedOptions[0];
+            const line = select.dataset.line;
+            if (opt && opt.value) {
+                document.querySelector(`.line-price[data-line="${line}"]`).value = opt.dataset.price;
+                recalc();
+            }
+        };
+
+        window.removeLine = function(id) {
+            document.getElementById(`line-${id}`)?.remove();
+            recalc();
+        };
+
+        window.recalc = function() {
+            let subtotal = 0, tax = 0;
+            document.querySelectorAll('.detail-row').forEach(row => {
+                const select = row.querySelector('.line-product');
+                const qty = parseFloat(row.querySelector('.line-qty')?.value) || 0;
+                const price = parseFloat(row.querySelector('.line-price')?.value) || 0;
+                const disc = parseFloat(row.querySelector('.line-disc')?.value) || 0;
+                const opt = select?.selectedOptions[0];
+                const taxRate = opt?.dataset?.tax ? parseFloat(opt.dataset.tax) : 15;
+
+                const gross = price * qty;
+                const discAmt = gross * disc / 100;
+                const lineSubtotal = gross - discAmt;
+                const lineTax = lineSubtotal * taxRate / 100;
+
+                subtotal += lineSubtotal;
+                tax += lineTax;
+
+                const totalEl = row.querySelector('.line-total');
+                if (totalEl) totalEl.textContent = formatCurrency(lineSubtotal + lineTax);
+            });
+
+            const discount = parseFloat(document.getElementById('totDiscount').value) || 0;
+            document.getElementById('totSubtotal').textContent = formatCurrency(subtotal);
+            document.getElementById('totTax').textContent = formatCurrency(tax);
+            document.getElementById('totTotal').textContent = formatCurrency(subtotal + tax - discount);
+        };
+
+        document.getElementById('totDiscount').addEventListener('input', recalc);
+
+        // New Invoice
+        document.getElementById('btnNewInvoice').addEventListener('click', () => {
+            document.getElementById('invoiceLines').innerHTML = '';
+            document.getElementById('invNotes').value = '';
+            document.getElementById('totDiscount').value = '0';
+            lineCount = 0;
+            addLine();
+            recalc();
+            modal.open('invoiceModal');
+        });
+
+        document.getElementById('btnAddLine').addEventListener('click', addLine);
+
+        // Save Invoice
+        document.getElementById('btnSaveInvoice').addEventListener('click', async () => {
+            const customerId = document.getElementById('invCustomer').value;
+            if (!customerId) { toast.warning('Seleccione un cliente'); return; }
+
+            const details = [];
+            let valid = true;
+            document.querySelectorAll('.detail-row').forEach(row => {
+                const productId = row.querySelector('.line-product')?.value;
+                const qty = parseInt(row.querySelector('.line-qty')?.value) || 0;
+                const price = parseFloat(row.querySelector('.line-price')?.value) || 0;
+                const disc = parseFloat(row.querySelector('.line-disc')?.value) || 0;
+
+                if (!productId || qty <= 0) { valid = false; return; }
+                details.push({ productId: parseInt(productId), quantity: qty, unitPrice: price, discountPercent: disc });
+            });
+
+            if (!valid || details.length === 0) { toast.warning('Agregue al menos un producto válido'); return; }
+
+            try {
+                const res = await api.post('/documents', {
+                    documentType: 'FACTURA',
+                    customerId: parseInt(customerId),
+                    paymentMethod: document.getElementById('invPayment').value,
+                    discountAmount: parseFloat(document.getElementById('totDiscount').value) || 0,
+                    notes: document.getElementById('invNotes').value || null,
+                    details
+                });
+
+                if (res?.success) {
+                    toast.success(`Factura ${res.data.documentNumber} creada`);
+                    modal.close('invoiceModal');
+                    loadInvoices();
+                } else {
+                    toast.error(res?.message || 'Error al crear factura');
+                }
+            } catch(e) { toast.error(e.message); }
+        });
+
+        // View
+        window.viewInvoice = async (id) => {
+            try {
+                const res = await api.get(`/documents/${id}`);
+                if (!res?.success) return;
+                const d = res.data;
+                document.getElementById('detailTitle').textContent = `Factura ${d.documentNumber}`;
+                document.getElementById('detailBody').innerHTML = `
+                    <div class="form-row" style="margin-bottom:1rem">
+                        <div><span class="form-label">Cliente:</span> <strong>${d.customerName}</strong></div>
+                        <div><span class="form-label">Fecha:</span> ${formatDate(d.documentDate)}</div>
+                        <div><span class="form-label">Estado:</span> ${statusBadge(d.status)}</div>
+                        <div><span class="form-label">Pago:</span> ${d.paymentMethod || '-'}</div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Desc%</th><th>ISV</th><th>Total</th></tr></thead>
+                        <tbody>
+                            ${d.details.map(dd => `
+                                <tr>
+                                    <td>${dd.productName}</td>
+                                    <td>${dd.quantity}</td>
+                                    <td class="mono">${formatCurrency(dd.unitPrice)}</td>
+                                    <td>${dd.discountPercent}%</td>
+                                    <td class="mono">${formatCurrency(dd.taxAmount)}</td>
+                                    <td class="mono" style="font-weight:600">${formatCurrency(dd.total)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    <div class="totals-section">
+                        <div class="totals-row"><span class="label">Subtotal:</span><span class="value">${formatCurrency(d.subtotal)}</span></div>
+                        <div class="totals-row"><span class="label">ISV:</span><span class="value">${formatCurrency(d.taxAmount)}</span></div>
+                        <div class="totals-row"><span class="label">Descuento:</span><span class="value">${formatCurrency(d.discountAmount)}</span></div>
+                        <div class="totals-row total"><span class="label">TOTAL:</span><span class="value">${formatCurrency(d.total)}</span></div>
+                    </div>
+                `;
+                document.getElementById('detailFooter').innerHTML = '';
+                modal.open('detailModal');
+            } catch(e) { toast.error(e.message); }
+        };
+
+        // Pay
+        window.payInvoice = async (id) => {
+            const ok = await modal.confirm('¿Marcar esta factura como pagada?', 'Confirmar Pago');
+            if (!ok) return;
+            try {
+                await api.patch(`/documents/${id}/status/PAGADA`);
+                toast.success('Factura marcada como pagada');
+                loadInvoices();
+            } catch(e) { toast.error(e.message); }
+        };
+
+        // Cancel
+        window.cancelInvoice = async (id) => {
+            const ok = await modal.confirm('¿Anular esta factura? Se restaurará el stock.', 'Anular Factura');
+            if (!ok) return;
+            try {
+                await api.patch(`/documents/${id}/status/ANULADA`);
+                toast.success('Factura anulada');
+                loadInvoices();
+            } catch(e) { toast.error(e.message); }
+        };
+
+        init();
+    </script>
+</body>
+</html>

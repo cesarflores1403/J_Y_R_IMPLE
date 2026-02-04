@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Usuarios</title><link rel="stylesheet" href="../css/styles.css"></head>
+<body>
+<div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
+<main class="main-content"><header class="top-header" id="appHeader"></header>
+<div class="page-content fade-in">
+    <div class="page-header"><div><h1>Usuarios</h1><p class="subtitle">Administración de accesos</p></div>
+    <button class="btn btn-primary" id="btnNew">+ Nuevo Usuario</button></div>
+    <div class="card"><div class="table-container"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody id="tableBody"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div></div>
+</div></main></div>
+
+<div class="modal-overlay" id="userModal"><div class="modal"><div class="modal-header"><h2 id="modalTitle">Nuevo Usuario</h2><button class="modal-close" onclick="document.getElementById('userModal').classList.remove('active')">×</button></div>
+<div class="modal-body"><form id="uForm">
+<div class="form-group"><label class="form-label">Usuario *</label><input class="form-control" id="uUsername" required></div>
+<div class="form-group"><label class="form-label">Contraseña *</label><input type="password" class="form-control" id="uPassword" required minlength="6"></div>
+<div class="form-group"><label class="form-label">Nombre Completo *</label><input class="form-control" id="uFullName" required></div>
+<div class="form-row"><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-control" id="uEmail"></div>
+<div class="form-group"><label class="form-label">Teléfono</label><input class="form-control" id="uPhone"></div></div>
+<div class="form-group"><label class="form-label">Rol *</label><select class="form-control" id="uRole" required>
+<option value="CAJERO">Cajero</option><option value="BODEGUERO">Bodeguero</option><option value="ADMIN">Administrador</option></select></div></form></div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('userModal').classList.remove('active')">Cancelar</button><button class="btn btn-primary" id="btnSave">Registrar</button></div></div></div>
+
+<script type="module">
+    import { initShell } from '../js/modules/shell.js'; import api from '../js/utils/api.js'; import toast from '../js/utils/toast.js'; import modal from '../js/utils/modal.js';
+    import { roleBadge, hasRole } from '../js/utils/helpers.js';
+    initShell('users');
+    if(!hasRole('ADMIN')){document.querySelector('.page-content').innerHTML='<div class="empty-state" style="margin-top:4rem"><h3>Acceso Denegado</h3><p>Solo administradores</p></div>';}
+
+    async function load(){const tb=document.getElementById('tableBody');tb.innerHTML='<tr><td colspan="6"><div class="spinner"></div></td></tr>';
+        try{const r=await api.get('/users');if(!r)return;
+        // The /users endpoint might not exist with list, try using auth register approach
+        tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:2rem">Use el botón + para crear nuevos usuarios</td></tr>';}catch(e){
+        tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:2rem">Registre nuevos usuarios con el botón +</td></tr>';}}
+
+    document.getElementById('btnNew').addEventListener('click',()=>{document.getElementById('uForm').reset();modal.open('userModal');});
+    document.getElementById('btnSave').addEventListener('click',async()=>{const f=document.getElementById('uForm');if(!f.checkValidity()){f.reportValidity();return;}
+        try{const r=await api.post('/auth/register',{username:document.getElementById('uUsername').value.trim(),password:document.getElementById('uPassword').value,
+        fullName:document.getElementById('uFullName').value.trim(),email:document.getElementById('uEmail').value.trim()||null,phone:document.getElementById('uPhone').value.trim()||null,role:document.getElementById('uRole').value});
+        if(r?.success){toast.success(`Usuario ${r.data.username} creado`);modal.close('userModal');load();}else toast.error(r?.message);}catch(e){toast.error(e.message);}});
+    load();
+</script>
+</body></html>

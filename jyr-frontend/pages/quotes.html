@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Cotizaciones</title><link rel="stylesheet" href="../css/styles.css"></head>
+<body>
+<div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
+<main class="main-content"><header class="top-header" id="appHeader"></header>
+<div class="page-content fade-in">
+    <div class="page-header"><div><h1>Cotizaciones</h1><p class="subtitle">Emisión de cotizaciones</p></div>
+    <button class="btn btn-primary" id="btnNewQuote">+ Nueva Cotización</button></div>
+    <div class="card"><div class="table-container"><table><thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody id="tableBody"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div></div>
+</div></main></div>
+
+<!-- Quote Modal -->
+<div class="modal-overlay" id="quoteModal"><div class="modal modal-xl"><div class="modal-header"><h2>Nueva Cotización</h2><button class="modal-close" onclick="document.getElementById('quoteModal').classList.remove('active')">×</button></div>
+<div class="modal-body">
+<div class="form-row"><div class="form-group"><label class="form-label">Cliente *</label><select class="form-control" id="qCustomer" required></select></div>
+<div class="form-group"><label class="form-label">Vencimiento</label><input type="date" class="form-control" id="qDueDate"></div></div>
+<div style="display:flex;align-items:center;justify-content:space-between;margin:1rem 0 0.5rem"><h4>Productos</h4><button class="btn btn-secondary btn-sm" id="btnAddQLine">+ Agregar</button></div>
+<div id="quoteLines"></div>
+<div class="totals-section"><div class="totals-row"><span class="label">Subtotal:</span><span class="value" id="qSubtotal">L 0.00</span></div>
+<div class="totals-row"><span class="label">ISV:</span><span class="value" id="qTax">L 0.00</span></div>
+<div class="totals-row total"><span class="label">TOTAL:</span><span class="value" id="qTotal">L 0.00</span></div></div>
+<div class="form-group" style="margin-top:1rem"><label class="form-label">Notas</label><textarea class="form-control" id="qNotes" rows="2"></textarea></div></div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('quoteModal').classList.remove('active')">Cancelar</button><button class="btn btn-primary" id="btnSaveQuote">💾 Emitir Cotización</button></div></div></div>
+
+<script type="module">
+    import { initShell } from '../js/modules/shell.js'; import api from '../js/utils/api.js'; import toast from '../js/utils/toast.js'; import modal from '../js/utils/modal.js';
+    import { formatCurrency, formatDate, statusBadge } from '../js/utils/helpers.js';
+    initShell('quotes');
+
+    let products=[], qlCount=0;
+
+    async function init(){try{const[cR,pR]=await Promise.all([api.get('/customers'),api.get('/products')]);
+    if(cR?.success)document.getElementById('qCustomer').innerHTML='<option value="">Seleccione...</option>'+cR.data.map(c=>`<option value="${c.id}">${c.fullName}</option>`).join('');
+    if(pR?.success)products=pR.data;}catch(e){}load();}
+
+    async function load(){const tb=document.getElementById('tableBody');tb.innerHTML='<tr><td colspan="6"><div class="spinner"></div></td></tr>';
+        try{const r=await api.get('/documents/type/COTIZACION?size=50&sort=id,desc');if(!r?.success)return;const data=r.data.content||r.data||[];
+        if(!data.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state"><h3>Sin cotizaciones</h3></div></td></tr>';return;}
+        tb.innerHTML=data.map(d=>`<tr><td class="mono" style="color:var(--accent)">${d.documentNumber}</td><td>${formatDate(d.documentDate)}</td><td>${d.customerName}</td>
+        <td class="mono" style="font-weight:600">${formatCurrency(d.total)}</td><td>${statusBadge(d.status)}</td>
+        <td><div class="btn-group">
+            ${d.status!=='ANULADA'?`<button class="btn btn-primary btn-sm" onclick="convertQ(${d.id})">→ Facturar</button>`:''}
+            ${d.status==='PENDIENTE'?`<button class="btn btn-danger btn-sm" onclick="cancelQ(${d.id})">✕</button>`:''}
+        </div></td></tr>`).join('');}catch(e){}}
+
+    function addQLine(){qlCount++;const c=document.getElementById('quoteLines');const div=document.createElement('div');div.className='detail-row';div.id=`ql-${qlCount}`;
+    div.innerHTML=`<select class="form-control ql-product" onchange="qRecalc()">${products.map(p=>`<option value="${p.id}" data-price="${p.salePrice}" data-tax="${p.taxRate}">${p.code} - ${p.name}</option>`).join('')}</select>
+    <input type="number" min="1" value="1" class="form-control ql-qty" onchange="qRecalc()"><input type="number" step="0.01" class="form-control ql-price" onchange="qRecalc()" placeholder="Precio">
+    <input type="number" step="0.01" value="0" class="form-control ql-disc" onchange="qRecalc()"><span class="mono ql-total" style="text-align:right;font-weight:600;font-size:0.82rem">L 0.00</span>
+    <button class="btn btn-ghost btn-icon btn-sm" onclick="this.parentElement.remove();qRecalc()">✕</button>`;c.appendChild(div);
+    div.querySelector('.ql-price').value=div.querySelector('.ql-product').selectedOptions[0]?.dataset.price||0;qRecalc();}
+
+    window.qRecalc=function(){let sub=0,tax=0;document.querySelectorAll('#quoteLines .detail-row').forEach(row=>{
+        const qty=parseFloat(row.querySelector('.ql-qty')?.value)||0;const price=parseFloat(row.querySelector('.ql-price')?.value)||0;
+        const disc=parseFloat(row.querySelector('.ql-disc')?.value)||0;const taxR=parseFloat(row.querySelector('.ql-product')?.selectedOptions[0]?.dataset.tax)||15;
+        const g=price*qty;const dA=g*disc/100;const s=g-dA;const t=s*taxR/100;sub+=s;tax+=t;
+        const el=row.querySelector('.ql-total');if(el)el.textContent=formatCurrency(s+t);});
+    document.getElementById('qSubtotal').textContent=formatCurrency(sub);document.getElementById('qTax').textContent=formatCurrency(tax);document.getElementById('qTotal').textContent=formatCurrency(sub+tax);};
+
+    document.getElementById('btnNewQuote').addEventListener('click',()=>{document.getElementById('quoteLines').innerHTML='';qlCount=0;addQLine();modal.open('quoteModal');});
+    document.getElementById('btnAddQLine').addEventListener('click',addQLine);
+
+    document.getElementById('btnSaveQuote').addEventListener('click',async()=>{const cid=document.getElementById('qCustomer').value;if(!cid){toast.warning('Seleccione cliente');return;}
+        const details=[];document.querySelectorAll('#quoteLines .detail-row').forEach(row=>{const pid=row.querySelector('.ql-product')?.value;const qty=parseInt(row.querySelector('.ql-qty')?.value)||0;
+        const price=parseFloat(row.querySelector('.ql-price')?.value)||0;const disc=parseFloat(row.querySelector('.ql-disc')?.value)||0;
+        if(pid&&qty>0)details.push({productId:parseInt(pid),quantity:qty,unitPrice:price,discountPercent:disc});});
+        if(!details.length){toast.warning('Agregue productos');return;}
+        try{const r=await api.post('/documents',{documentType:'COTIZACION',customerId:parseInt(cid),dueDate:document.getElementById('qDueDate').value||null,notes:document.getElementById('qNotes').value||null,details});
+        if(r?.success){toast.success(`Cotización ${r.data.documentNumber} creada`);modal.close('quoteModal');load();}else toast.error(r?.message);}catch(e){toast.error(e.message);}});
+
+    window.convertQ=async(id)=>{if(!await modal.confirm('¿Convertir esta cotización en factura?','Convertir'))return;
+        try{const r=await api.post(`/documents/${id}/convert`);if(r?.success){toast.success(`Factura ${r.data.documentNumber} generada`);load();}else toast.error(r?.message);}catch(e){toast.error(e.message);}};
+
+    window.cancelQ=async(id)=>{if(!await modal.confirm('¿Anular esta cotización?'))return;
+        try{await api.patch(`/documents/${id}/status/ANULADA`);toast.success('Anulada');load();}catch(e){toast.error(e.message);}};
+
+    init();
+</script>
+</body></html>

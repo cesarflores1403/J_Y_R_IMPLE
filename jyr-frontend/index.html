@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JYR System - Iniciar Sesión</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="login-page">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-logo">
+                    <div class="logo">
+                        <img src="img/logo.png" alt="JYR Logo" style="width:120px; height:120px; margin-left: 90px;">
+                    </div>
+                    <div class="index-title">
+                    <h1>Accesorios y Reparaciones</h1>
+                    <p>Sistema de Facturación e Inventario</p>
+                </div>
+
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label class="form-label">Usuario</label>
+                        <input type="text" id="username" class="form-control" placeholder="Ingrese su usuario" required autocomplete="username">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Contraseña</label>
+                        <input type="password" id="password" class="form-control" placeholder="Ingrese su contraseña" required autocomplete="current-password">
+                    </div>
+
+                    <div id="loginError" class="form-error" style="display:none; margin-bottom:1rem; text-align:center;"></div>
+
+                    <button type="submit" class="btn btn-primary btn-lg" style="width:100%; margin-top:0.5rem;" id="loginBtn">
+                        Iniciar Sesión
+                    </button>
+                </form>
+
+                <div style="text-align:center; margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--border);">
+                    <p style="color:var(--text-muted); font-size:0.75rem;">Syscar· Sistema JyR © 2026</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script type="module">
+        import api from './js/utils/api.js';
+        import toast from './js/utils/toast.js';
+
+        // Redirect if already authenticated
+        if (api.isAuthenticated()) {
+            window.location.href = 'pages/dashboard.html';
+        }
+
+        const form = document.getElementById('loginForm');
+        const errorEl = document.getElementById('loginError');
+        const btn = document.getElementById('loginBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Ingresando...';
+
+            try {
+                const res = await api.post('/auth/login', {
+                    username: document.getElementById('username').value.trim(),
+                    password: document.getElementById('password').value
+                });
+
+                if (res && res.success) {
+                    api.setAuth(res.data);
+                    toast.success('Bienvenido, ' + res.data.fullName);
+                    setTimeout(() => {
+                        window.location.href = 'pages/dashboard.html';
+                    }, 500);
+                } else {
+                    throw new Error(res?.message || 'Error de autenticación');
+                }
+            } catch (err) {
+                errorEl.textContent = err.message || 'Credenciales inválidas';
+                errorEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Iniciar Sesión';
+            }
+        });
+    </script>
+</body>
+</html>

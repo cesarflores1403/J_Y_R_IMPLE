@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Reportes</title><link rel="stylesheet" href="../css/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script></head>
+<body>
+<div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
+<main class="main-content"><header class="top-header" id="appHeader"></header>
+<div class="page-content fade-in">
+    <div class="page-header"><div><h1>Reportes</h1><p class="subtitle">Análisis de ventas y operaciones</p></div></div>
+
+    <div class="card" style="margin-bottom:1rem"><div class="card-body">
+        <div class="form-row" style="align-items:flex-end">
+            <div class="form-group"><label class="form-label">Fecha Inicio</label><input type="date" class="form-control" id="rStart"></div>
+            <div class="form-group"><label class="form-label">Fecha Fin</label><input type="date" class="form-control" id="rEnd"></div>
+            <div class="form-group"><button class="btn btn-primary" id="btnGenerate">Generar Reporte</button></div>
+        </div>
+    </div></div>
+
+    <div class="stats-grid" id="reportStats" style="display:none"></div>
+
+    <div class="dashboard-grid" style="margin-top:1rem">
+        <div class="card chart-card" id="chartCard" style="display:none"><div class="card-header"><h3>Ventas del Período</h3></div><div class="card-body"><canvas id="reportChart"></canvas></div></div>
+        <div class="card" id="detailCard" style="display:none"><div class="card-header"><h3>Detalle de Facturas</h3></div>
+        <div class="card-body table-container"><table><thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead>
+        <tbody id="reportTable"></tbody></table></div></div>
+    </div>
+</div></main></div>
+
+<script type="module">
+    import { initShell } from '../js/modules/shell.js'; import api from '../js/utils/api.js'; import toast from '../js/utils/toast.js';
+    import { formatCurrency, formatDate, statusBadge } from '../js/utils/helpers.js';
+    initShell('reports');
+
+    // Default dates
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    document.getElementById('rStart').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('rEnd').value = today.toISOString().split('T')[0];
+
+    let chartInstance = null;
+
+    document.getElementById('btnGenerate').addEventListener('click', async () => {
+        const start = document.getElementById('rStart').value;
+        const end = document.getElementById('rEnd').value;
+        if (!start || !end) { toast.warning('Seleccione fechas'); return; }
+
+        try {
+            const res = await api.get(`/documents/type/FACTURA/range?start=${start}&end=${end}`);
+            if (!res?.success) return;
+            const invoices = res.data || [];
+
+            const paid = invoices.filter(i => i.status === 'PAGADA');
+            const totalSales = paid.reduce((s, i) => s + parseFloat(i.total), 0);
+            const totalTax = paid.reduce((s, i) => s + parseFloat(i.taxAmount), 0);
+
+            document.getElementById('reportStats').style.display = 'grid';
+            document.getElementById('reportStats').innerHTML = `
+                <div class="stat-card"><div class="stat-icon amber">💰</div><div class="stat-info"><div class="stat-label">Total Ventas</div><div class="stat-value">${formatCurrency(totalSales)}</div></div></div>
+                <div class="stat-card"><div class="stat-icon blue">🧾</div><div class="stat-info"><div class="stat-label">Facturas</div><div class="stat-value">${invoices.length}</div></div></div>
+                <div class="stat-card"><div class="stat-icon green">💵</div><div class="stat-info"><div class="stat-label">ISV Recaudado</div><div class="stat-value">${formatCurrency(totalTax)}</div></div></div>
+                <div class="stat-card"><div class="stat-icon red">📊</div><div class="stat-info"><div class="stat-label">Ticket Promedio</div><div class="stat-value">${formatCurrency(paid.length ? totalSales / paid.length : 0)}</div></div></div>
+            `;
+
+            // Chart
+            const salesByDate = {};
+            paid.forEach(i => { salesByDate[i.documentDate] = (salesByDate[i.documentDate] || 0) + parseFloat(i.total); });
+            const dates = Object.keys(salesByDate).sort();
+
+            document.getElementById('chartCard').style.display = 'block';
+            if (chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(document.getElementById('reportChart'), {
+                type: 'bar', data: {
+                    labels: dates.map(d => formatDate(d)),
+                    datasets: [{ label: 'Ventas', data: dates.map(d => salesByDate[d]), backgroundColor: '#e8a838', borderRadius: 6 }]
+                }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b90a0', maxRotation: 45 } }, y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b90a0' } } } }
+            });
+
+            // Table
+            document.getElementById('detailCard').style.display = 'block';
+            document.getElementById('reportTable').innerHTML = invoices.map(i => `
+                <tr><td class="mono">${i.documentNumber}</td><td>${formatDate(i.documentDate)}</td><td>${i.customerName}</td>
+                <td class="mono" style="font-weight:600">${formatCurrency(i.total)}</td><td>${statusBadge(i.status)}</td></tr>
+            `).join('');
+
+        } catch (e) { toast.error(e.message); }
+    });
+</script>
+</body></html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Devoluciones</title><link rel="stylesheet" href="../css/styles.css"></head>
+<body>
+<div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
+<main class="main-content"><header class="top-header" id="appHeader"></header>
+<div class="page-content fade-in">
+    <div class="page-header"><div><h1>Devoluciones</h1><p class="subtitle">Gestión de devoluciones de productos</p></div>
+    <button class="btn btn-primary" id="btnNew">+ Nueva Devolución</button></div>
+    <div class="toolbar">
+        <select class="filter-select" id="filterStatus"><option value="">Todos los estados</option><option value="SOLICITADA">Solicitada</option><option value="APROBADA">Aprobada</option><option value="COMPLETADA">Completada</option><option value="RECHAZADA">Rechazada</option></select>
+    </div>
+    <div class="card"><div class="table-container"><table><thead><tr><th>Número</th><th>Factura</th><th>Producto</th><th>Cant.</th><th>Motivo</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody id="tableBody"><tr><td colspan="7"><div class="spinner"></div></td></tr></tbody></table></div></div>
+</div></main></div>
+
+<div class="modal-overlay" id="retModal"><div class="modal"><div class="modal-header"><h2>Nueva Devolución</h2><button class="modal-close" onclick="document.getElementById('retModal').classList.remove('active')">×</button></div>
+<div class="modal-body"><form id="retForm">
+<div class="form-group"><label class="form-label">ID de Factura *</label><input type="number" class="form-control" id="rDocId" required placeholder="Ej: 1"></div>
+<div class="form-group"><label class="form-label">ID de Producto *</label><input type="number" class="form-control" id="rProdId" required placeholder="Ej: 1"></div>
+<div class="form-group"><label class="form-label">Cantidad *</label><input type="number" min="1" class="form-control" id="rQty" required value="1"></div>
+<div class="form-group"><label class="form-label">Motivo de Devolución *</label><textarea class="form-control" id="rReason" required rows="3" placeholder="Describa el motivo..."></textarea></div></form></div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('retModal').classList.remove('active')">Cancelar</button><button class="btn btn-primary" id="btnSave">Registrar Devolución</button></div></div></div>
+
+<script type="module">
+    import { initShell } from '../js/modules/shell.js'; import api from '../js/utils/api.js'; import toast from '../js/utils/toast.js'; import modal from '../js/utils/modal.js';
+    import { formatCurrency, formatDate, statusBadge } from '../js/utils/helpers.js';
+    initShell('returns');
+
+    async function load(){const tb=document.getElementById('tableBody');tb.innerHTML='<tr><td colspan="7"><div class="spinner"></div></td></tr>';
+        try{const status=document.getElementById('filterStatus').value;
+        const endpoint=status?`/returns/status/${status}?size=50&sort=id,desc`:'/returns?size=50&sort=id,desc';
+        const r=await api.get(endpoint);if(!r?.success)return;const data=r.data.content||r.data||[];
+        if(!data.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state"><h3>Sin devoluciones</h3></div></td></tr>';return;}
+        tb.innerHTML=data.map(d=>`<tr>
+            <td class="mono" style="color:var(--accent)">${d.returnNumber}</td><td class="mono">${d.documentNumber}</td>
+            <td>${d.productName}</td><td>${d.quantity}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.reason}">${d.reason}</td>
+            <td>${statusBadge(d.status)}</td>
+            <td><div class="btn-group">
+                ${d.status==='SOLICITADA'?`<button class="btn btn-success btn-sm" onclick="approveRet(${d.id})">✓</button><button class="btn btn-danger btn-sm" onclick="rejectRet(${d.id})">✕</button>`:''}
+                ${d.status==='APROBADA'?`<button class="btn btn-primary btn-sm" onclick="completeRet(${d.id})">Completar</button>`:''}
+                ${d.evidenceUrl?`<a href="http://localhost:8080${d.evidenceUrl}" target="_blank" class="btn btn-ghost btn-sm">📎</a>`:`<button class="btn btn-ghost btn-sm" onclick="uploadEvid(${d.id})">📷</button>`}
+            </div></td></tr>`).join('');}catch(e){}}
+
+    document.getElementById('filterStatus').addEventListener('change',load);
+    document.getElementById('btnNew').addEventListener('click',()=>{document.getElementById('retForm').reset();modal.open('retModal');});
+    document.getElementById('btnSave').addEventListener('click',async()=>{const f=document.getElementById('retForm');if(!f.checkValidity()){f.reportValidity();return;}
+        try{const r=await api.post('/returns',{documentId:parseInt(document.getElementById('rDocId').value),productId:parseInt(document.getElementById('rProdId').value),quantity:parseInt(document.getElementById('rQty').value),reason:document.getElementById('rReason').value.trim()});
+        if(r?.success){toast.success(`Devolución ${r.data.returnNumber} registrada`);modal.close('retModal');load();}else toast.error(r?.message);}catch(e){toast.error(e.message);}});
+
+    window.approveRet=async(id)=>{try{await api.patch(`/returns/${id}/status`,{status:'APROBADA',resolutionNotes:'Aprobada'});toast.success('Aprobada');load();}catch(e){toast.error(e.message);}};
+    window.rejectRet=async(id)=>{try{await api.patch(`/returns/${id}/status`,{status:'RECHAZADA',resolutionNotes:'Rechazada'});toast.success('Rechazada');load();}catch(e){toast.error(e.message);}};
+    window.completeRet=async(id)=>{try{await api.patch(`/returns/${id}/status`,{status:'COMPLETADA',resolutionNotes:'Completada - stock restaurado'});toast.success('Completada');load();}catch(e){toast.error(e.message);}};
+    window.uploadEvid=async(id)=>{const input=document.createElement('input');input.type='file';input.accept='image/*';input.onchange=async()=>{const fd=new FormData();fd.append('file',input.files[0]);try{await api.upload(`/returns/${id}/evidence`,fd);toast.success('Evidencia cargada');load();}catch(e){toast.error(e.message);}};input.click();};
+    load();
+</script>
+</body></html>
