@@ -1,13 +1,31 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Cotizaciones</title><link rel="stylesheet" href="../css/styles.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>JYR - Cotizaciones</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
 <body>
 <div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
 <main class="main-content"><header class="top-header" id="appHeader"></header>
 <div class="page-content fade-in">
     <div class="page-header"><div><h1>Cotizaciones</h1><p class="subtitle">Emisión de cotizaciones</p></div>
     <button class="btn btn-primary" id="btnNewQuote">+ Nueva Cotización</button></div>
-    <div class="card"><div class="table-container"><table><thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <div class="toolbar">
+        <div class="search-box">
+            <span class="icon"><i class="fa fa-search"></i></span>
+            <input type="text" placeholder="Buscar por número o cliente..." id="searchInput">
+        </div>
+        <select class="filter-select" id="filterStatus">
+            <option value="">Todos los estados</option>
+            <option value="PENDIENTE">Pendiente</option>
+            <option value="ANULADA">Anulada</option>
+        </select>
+    </div>
+   
+    <div class="card">
+        <div class="table-container">
+            <table><thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead>
     <tbody id="tableBody"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div></div>
 </div></main></div>
 
@@ -35,8 +53,13 @@
     if(cR?.success)document.getElementById('qCustomer').innerHTML='<option value="">Seleccione...</option>'+cR.data.map(c=>`<option value="${c.id}">${c.fullName}</option>`).join('');
     if(pR?.success)products=pR.data;}catch(e){}load();}
 
-    async function load(){const tb=document.getElementById('tableBody');tb.innerHTML='<tr><td colspan="6"><div class="spinner"></div></td></tr>';
-        try{const r=await api.get('/documents/type/COTIZACION?size=50&sort=id,desc');if(!r?.success)return;const data=r.data.content||r.data||[];
+ async function load(){const tb=document.getElementById('tableBody');tb.innerHTML='<tr><td colspan="6"><div class="spinner"></div></td></tr>';
+        try{const status=document.getElementById('filterStatus').value;
+        const endpoint=status?`/documents/type/COTIZACION/status/${status}?size=50&sort=id,desc`:'/documents/type/COTIZACION?size=50&sort=id,desc';
+        const r=await api.get(endpoint);if(!r?.success)return;let data=r.data.content||r.data||[];
+        const q=(document.getElementById('searchInput').value||'').toLowerCase();
+        if(q)data=data.filter(d=>d.documentNumber.toLowerCase().includes(q)||d.customerName.toLowerCase().includes(q));
+
         if(!data.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state"><h3>Sin cotizaciones</h3></div></td></tr>';return;}
         tb.innerHTML=data.map(d=>`<tr><td class="mono" style="color:var(--accent)">${d.documentNumber}</td><td>${formatDate(d.documentDate)}</td><td>${d.customerName}</td>
         <td class="mono" style="font-weight:600">${formatCurrency(d.total)}</td><td>${statusBadge(d.status)}</td>
@@ -75,6 +98,9 @@
 
     window.cancelQ=async(id)=>{if(!await modal.confirm('¿Anular esta cotización?'))return;
         try{await api.patch(`/documents/${id}/status/ANULADA`);toast.success('Anulada');load();}catch(e){toast.error(e.message);}};
+ document.getElementById('filterStatus').addEventListener('change',load);
+    document.getElementById('searchInput').addEventListener('input',function(){clearTimeout(this._t);this._t=setTimeout(load,300);});
+    init();
 
     init();
 </script>

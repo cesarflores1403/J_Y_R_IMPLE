@@ -61,14 +61,15 @@ function renderHeader(user) {
     header.innerHTML = `
         <button class="menu-toggle" id="menuToggle">☰</button>
         <div class="header-search">
-            <span class="search-icon">🔍</span>
+            
+            <span class="search-icon"><i class="fa fa-search"></i></span>
             <input type="text" placeholder="Buscar productos, clientes, facturas..." id="globalSearch">
         </div>
         <div class="header-actions">
             <button class="header-btn" title="Notificaciones">
-                🔔<span class="dot"></span>
+                <i class="fa fa-bell"></i><span class="dot"></span>
             </button>
-            <button class="header-btn" title="Cerrar sesión" id="logoutBtn">⏻</button>
+            <button class="header-btn" title="Cerrar sesión" id="logoutBtn"><i class="fa fa-sign-out"></i></button>
         </div>
     `;
 
@@ -107,7 +108,7 @@ function buildNav(role) {
         items.push({ section: 'Ventas' });
         items.push({ id: 'invoices', icon: '', label: 'Facturas', href: 'invoices.html' });
         items.push({ id: 'quotes', icon: '', label: 'Cotizaciones', href: 'quotes.html' });
-        items.push({ id: 'returns', icon: '↩', label: 'Devoluciones', href: 'returns.html' });
+        items.push({ id: 'returns', icon: '', label: 'Devoluciones', href: 'returns.html' });
         items.push({ id: 'customers', icon: '', label: 'Clientes', href: 'customers.html' });
     }
 

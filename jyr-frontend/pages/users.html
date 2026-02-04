@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Usuarios</title><link rel="stylesheet" href="../css/styles.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>JYR - Usuarios</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
 <body>
 <div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
 <main class="main-content"><header class="top-header" id="appHeader"></header>
@@ -9,7 +13,9 @@
     <button class="btn btn-primary" id="btnNew">+ Nuevo Usuario</button></div>
     <div class="card"><div class="table-container"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
     <tbody id="tableBody"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div></div>
-</div></main></div>
+</div>
+</main>
+</div>
 
 <div class="modal-overlay" id="userModal"><div class="modal"><div class="modal-header"><h2 id="modalTitle">Nuevo Usuario</h2><button class="modal-close" onclick="document.getElementById('userModal').classList.remove('active')">×</button></div>
 <div class="modal-body"><form id="uForm">

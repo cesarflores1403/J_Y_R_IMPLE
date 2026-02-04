@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Devoluciones</title><link rel="stylesheet" href="../css/styles.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>JYR - Devoluciones</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
 <body>
 <div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
 <main class="main-content"><header class="top-header" id="appHeader"></header>
@@ -8,6 +12,10 @@
     <div class="page-header"><div><h1>Devoluciones</h1><p class="subtitle">Gestión de devoluciones de productos</p></div>
     <button class="btn btn-primary" id="btnNew">+ Nueva Devolución</button></div>
     <div class="toolbar">
+        <div class="search-box">
+            <span class="icon"><i class="fa fa-search"></i></span>
+            <input type="text" placeholder="Buscar por número o producto..." id="searchInput">
+        </div>
         <select class="filter-select" id="filterStatus"><option value="">Todos los estados</option><option value="SOLICITADA">Solicitada</option><option value="APROBADA">Aprobada</option><option value="COMPLETADA">Completada</option><option value="RECHAZADA">Rechazada</option></select>
     </div>
     <div class="card"><div class="table-container"><table><thead><tr><th>Número</th><th>Factura</th><th>Producto</th><th>Cant.</th><th>Motivo</th><th>Estado</th><th>Acciones</th></tr></thead>
@@ -31,8 +39,9 @@
         try{const status=document.getElementById('filterStatus').value;
         const endpoint=status?`/returns/status/${status}?size=50&sort=id,desc`:'/returns?size=50&sort=id,desc';
         const r=await api.get(endpoint);if(!r?.success)return;const data=r.data.content||r.data||[];
-        if(!data.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state"><h3>Sin devoluciones</h3></div></td></tr>';return;}
-        tb.innerHTML=data.map(d=>`<tr>
+const q=(document.getElementById('searchInput').value||'').toLowerCase();
+        if(q)data=data.filter(d=>d.returnNumber.toLowerCase().includes(q)||d.productName.toLowerCase().includes(q));
+        if(!data.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state"><h3>Sin devoluciones</h3></div></td></tr>';return;}        tb.innerHTML=data.map(d=>`<tr>
             <td class="mono" style="color:var(--accent)">${d.returnNumber}</td><td class="mono">${d.documentNumber}</td>
             <td>${d.productName}</td><td>${d.quantity}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.reason}">${d.reason}</td>
             <td>${statusBadge(d.status)}</td>
@@ -52,6 +61,8 @@
     window.rejectRet=async(id)=>{try{await api.patch(`/returns/${id}/status`,{status:'RECHAZADA',resolutionNotes:'Rechazada'});toast.success('Rechazada');load();}catch(e){toast.error(e.message);}};
     window.completeRet=async(id)=>{try{await api.patch(`/returns/${id}/status`,{status:'COMPLETADA',resolutionNotes:'Completada - stock restaurado'});toast.success('Completada');load();}catch(e){toast.error(e.message);}};
     window.uploadEvid=async(id)=>{const input=document.createElement('input');input.type='file';input.accept='image/*';input.onchange=async()=>{const fd=new FormData();fd.append('file',input.files[0]);try{await api.upload(`/returns/${id}/evidence`,fd);toast.success('Evidencia cargada');load();}catch(e){toast.error(e.message);}};input.click();};
+     document.getElementById('searchInput').addEventListener('input',function(){clearTimeout(this._t);this._t=setTimeout(load,300);});
     load();
+
 </script>
 </body></html>

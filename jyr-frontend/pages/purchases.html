@@ -1,13 +1,22 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Compras</title><link rel="stylesheet" href="../css/styles.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>JYR - Compras</title><link rel="stylesheet" href="../css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
 <body>
 <div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
 <main class="main-content"><header class="top-header" id="appHeader"></header>
 <div class="page-content fade-in">
     <div class="page-header"><div><h1>Órdenes de Compra</h1><p class="subtitle">Compras a proveedores</p></div>
     <button class="btn btn-primary" id="btnNew">+ Nueva Orden</button></div>
-    <div class="toolbar"><select class="filter-select" id="filterStatus"><option value="">Todos</option><option value="PENDIENTE">Pendiente</option><option value="RECIBIDA">Recibida</option><option value="PARCIAL">Parcial</option><option value="CANCELADA">Cancelada</option></select></div>
+<div class="toolbar">
+        <div class="search-box">
+            <span class="icon"><i class="fa fa-search"></i></span>
+            <input type="text" placeholder="Buscar por número o proveedor..." id="searchInput">
+        </div>
+        <select class="filter-select" id="filterStatus"><option value="">Todos</option><option value="PENDIENTE">Pendiente</option><option value="RECIBIDA">Recibida</option><option value="PARCIAL">Parcial</option><option value="CANCELADA">Cancelada</option></select>
+    </div>
     <div class="card"><div class="table-container"><table><thead><tr><th>Número</th><th>Proveedor</th><th>Fecha</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead>
     <tbody id="tableBody"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div></div>
 </div></main></div>
@@ -42,8 +51,9 @@
     async function load(){const tb=document.getElementById('tableBody');tb.innerHTML='<tr><td colspan="6"><div class="spinner"></div></td></tr>';
         try{const s=document.getElementById('filterStatus').value;const ep=s?`/purchase-orders/status/${s}?size=50&sort=id,desc`:'/purchase-orders?size=50&sort=id,desc';
         const r=await api.get(ep);if(!r?.success)return;const data=r.data.content||r.data||[];
-        if(!data.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state"><h3>Sin órdenes</h3></div></td></tr>';return;}
-        tb.innerHTML=data.map(d=>`<tr><td class="mono" style="color:var(--accent)">${d.orderNumber}</td><td>${d.supplierName}</td><td>${formatDate(d.orderDate)}</td>
+        const q=(document.getElementById('searchInput').value||'').toLowerCase();
+        if(q)data=data.filter(d=>d.orderNumber.toLowerCase().includes(q)||d.supplierName.toLowerCase().includes(q));
+        if(!data.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state"><h3>Sin órdenes</h3></div></td></tr>';return;}        tb.innerHTML=data.map(d=>`<tr><td class="mono" style="color:var(--accent)">${d.orderNumber}</td><td>${d.supplierName}</td><td>${formatDate(d.orderDate)}</td>
         <td class="mono" style="font-weight:600">${formatCurrency(d.total)}</td><td>${statusBadge(d.status)}</td>
         <td><div class="btn-group">
             ${d.status==='PENDIENTE'||d.status==='PARCIAL'?`<button class="btn btn-success btn-sm" onclick="receivePO(${d.id})">📥 Recibir</button><button class="btn btn-danger btn-sm" onclick="cancelPO(${d.id})">✕</button>`:''}
@@ -87,6 +97,7 @@
     window.cancelPO=async(id)=>{if(!await modal.confirm('¿Cancelar esta orden?'))return;
         try{await api.patch(`/purchase-orders/${id}/cancel`);toast.success('Cancelada');load();}catch(e){toast.error(e.message);}};
 
+        document.getElementById('searchInput').addEventListener('input',function(){clearTimeout(this._t);this._t=setTimeout(load,300);});
     init();
-</script>
+    </script>
 </body></html>

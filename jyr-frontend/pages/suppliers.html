@@ -1,13 +1,23 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Proveedores</title><link rel="stylesheet" href="../css/styles.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>JYR - Proveedores</title>
+    <link rel="stylesheet" href="../css/styles.css"></head>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 <body>
 <div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
 <main class="main-content"><header class="top-header" id="appHeader"></header>
 <div class="page-content fade-in">
     <div class="page-header"><div><h1>Proveedores</h1><p class="subtitle">Gestión de proveedores</p></div>
     <button class="btn btn-primary" id="btnNew">+ Nuevo Proveedor</button></div>
-    <div class="card"><div class="table-container"><table><thead><tr><th>Empresa</th><th>RTN</th><th>Contacto</th><th>Teléfono</th><th>Email</th><th>Acciones</th></tr></thead>
+    <div class="toolbar">
+        <div class="search-box">
+            <span class="icon"><i class="fa fa-search"></i></span>
+            <input type="text" placeholder="Buscar por empresa o contacto..." id="searchInput">
+        </div>
+    </div>
+    <div class="card">
+        <div class="table-container"><table><thead><tr><th>Empresa</th><th>RTN</th><th>Contacto</th><th>Teléfono</th><th>Email</th><th>Acciones</th></tr></thead>
     <tbody id="tableBody"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div></div>
 </div></main></div>
 
@@ -18,16 +28,25 @@
 <div class="form-row"><div class="form-group"><label class="form-label">Teléfono</label><input class="form-control" id="sPhone"></div><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-control" id="sEmail"></div></div>
 <div class="form-group"><label class="form-label">Dirección</label><input class="form-control" id="sAddress"></div>
 <div class="form-group"><label class="form-label">Notas</label><textarea class="form-control" id="sNotes" rows="2"></textarea></div></form></div>
-<div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('supModal').classList.remove('active')">Cancelar</button><button class="btn btn-primary" id="btnSave">Guardar</button></div></div></div>
+<div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('supModal').classList.remove('active')">Cancelar</button><button class="btn btn-primary" id="btnSave">Guardar</button>
+</div>
+</div>
+</div>
 
 <script type="module">
     import { initShell } from '../js/modules/shell.js'; import api from '../js/utils/api.js'; import toast from '../js/utils/toast.js'; import modal from '../js/utils/modal.js';
     initShell('suppliers');
 
     async function load(){const tb=document.getElementById('tableBody');tb.innerHTML='<tr><td colspan="6"><div class="spinner"></div></td></tr>';
-        try{const r=await api.get('/suppliers');if(!r?.success)return;if(!r.data.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state"><h3>Sin proveedores</h3></div></td></tr>';return;}
-        tb.innerHTML=r.data.map(s=>`<tr><td><strong>${s.companyName}</strong></td><td>${s.rtn||'-'}</td><td>${s.contactName||'-'}</td><td>${s.phone||'-'}</td><td>${s.email||'-'}</td>
-        <td><div class="btn-group"><button class="btn btn-ghost btn-sm" onclick="editS(${s.id})">✏️</button><button class="btn btn-ghost btn-sm" onclick="delS(${s.id},'${s.companyName}')">🗑️</button></div></td></tr>`).join('');}catch(e){}}
+        try{const r=await api.get('/suppliers');if(!r?.success)return;
+        let data=r.data;const q=(document.getElementById('searchInput').value||'').toLowerCase();
+        if(q)data=data.filter(s=>s.companyName.toLowerCase().includes(q)||(s.contactName||'').toLowerCase().includes(q));
+        if(!data.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state"><h3>Sin proveedores</h3></div></td></tr>';return;}
+        tb.innerHTML=data.map(s=>
+        `<tr><td><strong>${s.companyName}</strong></td><td>${s.rtn||'-'}</td><td>${s.contactName||'-'}</td><td>${s.phone||'-'}</td><td>${s.email||'-'}</td>
+        <td><div class="btn-group">
+
+        <button class="btn btn-ghost btn-sm" onclick="editS(${s.id})"><i class="fa fa-pencil"></i></button><button class="btn btn-ghost btn-sm" onclick="delS(${s.id},'${s.companyName}')"><i class="fa fa-trash"></i></button>            </div></td></tr>`).join('');}catch(e){}}
 
     document.getElementById('btnNew').addEventListener('click',()=>{document.getElementById('sForm').reset();document.getElementById('sId').value='';document.getElementById('modalTitle').textContent='Nuevo Proveedor';modal.open('supModal');});
     document.getElementById('btnSave').addEventListener('click',async()=>{const f=document.getElementById('sForm');if(!f.checkValidity()){f.reportValidity();return;}
@@ -36,6 +55,8 @@
 
     window.editS=async(id)=>{try{const r=await api.get(`/suppliers/${id}`);if(!r?.success)return;const s=r.data;document.getElementById('modalTitle').textContent='Editar';document.getElementById('sId').value=s.id;document.getElementById('sCompany').value=s.companyName;document.getElementById('sRtn').value=s.rtn||'';document.getElementById('sContact').value=s.contactName||'';document.getElementById('sPhone').value=s.phone||'';document.getElementById('sEmail').value=s.email||'';document.getElementById('sAddress').value=s.address||'';document.getElementById('sNotes').value=s.notes||'';modal.open('supModal');}catch(e){}};
     window.delS=async(id,n)=>{if(!await modal.confirm(`¿Eliminar "${n}"?`))return;try{await api.delete(`/suppliers/${id}`);toast.success('Eliminado');load();}catch(e){toast.error(e.message);}};
+    document.getElementById('searchInput').addEventListener('input',function(){clearTimeout(this._t);this._t=setTimeout(load,300);});
+    load();
     load();
 </script>
 </body></html>

@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Inventario</title><link rel="stylesheet" href="../css/styles.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Inventario</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
 <body>
 <div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
 <main class="main-content"><header class="top-header" id="appHeader"></header>
 <div class="page-content fade-in">
     <div class="page-header"><div><h1>Movimientos de Inventario</h1><p class="subtitle">Historial de entradas, salidas y ajustes</p></div>
-    <button class="btn btn-primary" id="btnAdjust">⚙️ Ajuste Manual</button></div>
+    <button class="btn btn-primary" id="btnAdjust"> Ajuste Manual</button></div>
     <div class="toolbar">
         <select class="filter-select" id="filterType"><option value="">Todos los tipos</option><option value="ENTRADA">Entrada</option><option value="SALIDA">Salida</option><option value="AJUSTE">Ajuste</option><option value="DEVOLUCION">Devolución</option></select>
-        <div class="search-box"><span class="icon">🔍</span><input type="text" placeholder="ID de producto..." id="prodIdInput"></div>
+        <div class="search-box"> <span class="icon"><i class="fa fa-search"></i></span>
+            <input type="text" placeholder="ID de producto..." id="prodIdInput"></div>
         <button class="btn btn-secondary btn-sm" id="btnSearch">Buscar</button>
     </div>
     <div class="card"><div class="table-container"><table><thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Stock Anterior</th><th>Stock Nuevo</th><th>Referencia</th><th>Usuario</th></tr></thead>
@@ -32,14 +36,34 @@
     const typeBadge=t=>`<span class="badge badge-${t==='ENTRADA'?'success':t==='SALIDA'?'danger':t==='AJUSTE'?'warning':'info'}">${t}</span>`;
 
     async function load(type='',productId=''){const tb=document.getElementById('tableBody');
-        if(!type&&!productId){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:2rem">Seleccione un tipo o producto</td></tr>';return;}
         tb.innerHTML='<tr><td colspan="8"><div class="spinner"></div></td></tr>';
-        try{let ep=productId?`/inventory/movements/product/${productId}?size=50&sort=id,desc`:`/inventory/movements/type/${type}?size=50&sort=id,desc`;
-        const r=await api.get(ep);if(!r?.success)return;const data=r.data.content||r.data||[];
-        if(!data.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state"><h3>Sin movimientos</h3></div></td></tr>';return;}
-        tb.innerHTML=data.map(m=>`<tr><td style="font-size:0.78rem">${formatDateTime(m.movementDate)}</td><td>${m.productName}<br><small class="mono" style="color:var(--text-muted)">${m.productCode}</small></td>
-        <td>${typeBadge(m.movementType)}</td><td style="font-weight:600">${m.quantity}</td><td>${m.previousStock}</td><td style="font-weight:600">${m.newStock}</td>
-        <td style="font-size:0.78rem">${m.referenceType||'-'}${m.referenceId?' #'+m.referenceId:''}</td><td>${m.userName}</td></tr>`).join('');}catch(e){}}
+        try{
+            let ep;
+            if(productId){
+                ep=`/inventory/movements/product/${productId}?size=50&sort=id,desc`;
+            } else if(type){
+                ep=`/inventory/movements/type/${type}?size=50&sort=id,desc`;
+            } else {
+                // Todos los tipos: cargar los 4 tipos y combinar
+                const types=['ENTRADA','SALIDA','AJUSTE','DEVOLUCION'];
+                const requests=types.map(t=>api.get(`/inventory/movements/type/${t}?size=50&sort=id,desc`).catch(()=>null));
+                const results=await Promise.all(requests);
+                let allData=[];
+                results.forEach(r=>{if(r?.success){const d=r.data.content||r.data||[];allData=allData.concat(d);}});
+                // Ordenar por fecha descendente
+                allData.sort((a,b)=>new Date(b.movementDate)-new Date(a.movementDate));
+                if(!allData.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state"><h3>Sin movimientos</h3></div></td></tr>';return;}
+                tb.innerHTML=allData.map(m=>`<tr><td style="font-size:0.78rem">${formatDateTime(m.movementDate)}</td><td>${m.productName}<br><small class="mono" style="color:var(--text-muted)">${m.productCode}</small></td>
+                <td>${typeBadge(m.movementType)}</td><td style="font-weight:600">${m.quantity}</td><td>${m.previousStock}</td><td style="font-weight:600">${m.newStock}</td>
+                <td style="font-size:0.78rem">${m.referenceType||'-'}${m.referenceId?' #'+m.referenceId:''}</td><td>${m.userName}</td></tr>`).join('');
+                return;
+            }
+            const r=await api.get(ep);if(!r?.success)return;const data=r.data.content||r.data||[];
+            if(!data.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state"><h3>Sin movimientos</h3></div></td></tr>';return;}
+            tb.innerHTML=data.map(m=>`<tr><td style="font-size:0.78rem">${formatDateTime(m.movementDate)}</td><td>${m.productName}<br><small class="mono" style="color:var(--text-muted)">${m.productCode}</small></td>
+            <td>${typeBadge(m.movementType)}</td><td style="font-weight:600">${m.quantity}</td><td>${m.previousStock}</td><td style="font-weight:600">${m.newStock}</td>
+            <td style="font-size:0.78rem">${m.referenceType||'-'}${m.referenceId?' #'+m.referenceId:''}</td><td>${m.userName}</td></tr>`).join('');
+        }catch(e){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:2rem">Error al cargar movimientos</td></tr>';}}
 
     document.getElementById('filterType').addEventListener('change',e=>load(e.target.value,''));
     document.getElementById('btnSearch').addEventListener('click',()=>{const pid=document.getElementById('prodIdInput').value;if(pid)load('',pid);});
@@ -48,5 +72,8 @@
     document.getElementById('btnSaveAdj').addEventListener('click',async()=>{const f=document.getElementById('adjForm');if(!f.checkValidity()){f.reportValidity();return;}
         try{const r=await api.post('/inventory/adjust',{productId:parseInt(document.getElementById('adjProd').value),newStock:parseInt(document.getElementById('adjStock').value),reason:document.getElementById('adjReason').value.trim()});
         if(r?.success){toast.success('Ajuste aplicado');modal.close('adjModal');load('AJUSTE','');}else toast.error(r?.message);}catch(e){toast.error(e.message);}});
+
+    // Cargar todos los movimientos automáticamente al entrar
+    load();
 </script>
 </body></html>

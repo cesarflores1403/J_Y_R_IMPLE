@@ -1,13 +1,24 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>JYR - Categorías</title><link rel="stylesheet" href="../css/styles.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>JYR - Categorías</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
 <body>
 <div class="app-layout"><div class="sidebar-overlay" id="sidebarOverlay"></div><aside class="sidebar" id="appSidebar"></aside>
 <main class="main-content"><header class="top-header" id="appHeader"></header>
 <div class="page-content fade-in">
     <div class="page-header"><div><h1>Categorías</h1><p class="subtitle">Organización de productos</p></div>
     <button class="btn btn-primary" id="btnNew">+ Nueva Categoría</button></div>
-    <div class="card"><div class="table-container"><table><thead><tr><th>Nombre</th><th>Descripción</th><th>Productos</th><th>Acciones</th></tr></thead>
+    <div class="toolbar">
+        <div class="search-box">
+            <span class="icon"><i class="fa fa-search"></i></span>
+            <input type="text" placeholder="Buscar categoría..." id="searchInput">
+        </div>
+    </div>
+    <div class="card">
+        <div class="table-container"><table><thead><tr><th>Nombre</th><th>Descripción</th><th>Productos</th><th>Acciones</th></tr></thead>
     <tbody id="tableBody"><tr><td colspan="4"><div class="spinner"></div></td></tr></tbody></table></div></div>
 </div></main></div>
 
@@ -22,8 +33,12 @@
     initShell('categories');
 
     async function load(){const tb=document.getElementById('tableBody');tb.innerHTML='<tr><td colspan="4"><div class="spinner"></div></td></tr>';
-        try{const r=await api.get('/categories');if(!r?.success)return;if(!r.data.length){tb.innerHTML='<tr><td colspan="4"><div class="empty-state"><h3>Sin categorías</h3></div></td></tr>';return;}
-        tb.innerHTML=r.data.map(c=>`<tr><td><strong>${c.name}</strong></td><td>${c.description||'-'}</td><td>${c.productCount||0}</td>
+        try{const r=await api.get('/categories');
+        let data=r.data;const q=(document.getElementById('searchInput').value||'').toLowerCase();
+        if(q)data=data.filter(c=>c.name.toLowerCase().includes(q));
+        if(!data.length){tb.innerHTML='<tr><td colspan="4"><div class="empty-state"><h3>Sin categorías</h3></div></td></tr>';return;}
+        tb.innerHTML=data.map(c=>
+        `<tr><td><strong>${c.name}</strong></td><td>${c.description||'-'}</td><td>${c.productCount||0}</td>
         <td><div class="btn-group"><button class="btn btn-ghost btn-sm" onclick="editCat(${c.id})">✏️</button><button class="btn btn-ghost btn-sm" onclick="delCat(${c.id},'${c.name}')">🗑️</button></div></td></tr>`).join('');}catch(e){}}
 
     document.getElementById('btnNew').addEventListener('click',()=>{document.getElementById('catForm').reset();document.getElementById('catId').value='';document.getElementById('modalTitle').textContent='Nueva Categoría';modal.open('catModal');});
@@ -33,6 +48,8 @@
 
     window.editCat=async(id)=>{try{const r=await api.get(`/categories/${id}`);if(!r?.success)return;document.getElementById('modalTitle').textContent='Editar';document.getElementById('catId').value=r.data.id;document.getElementById('catName').value=r.data.name;document.getElementById('catDesc').value=r.data.description||'';modal.open('catModal');}catch(e){}};
     window.delCat=async(id,n)=>{if(!await modal.confirm(`¿Eliminar "${n}"?`))return;try{await api.delete(`/categories/${id}`);toast.success('Eliminada');load();}catch(e){toast.error(e.message);}};
+     document.getElementById('searchInput').addEventListener('input',function(){clearTimeout(this._t);this._t=setTimeout(load,300);});
+    load();
     load();
 </script>
 </body></html>
